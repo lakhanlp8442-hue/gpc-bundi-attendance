@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">Registered BTER Students</small>
+            <h3 class="fw-bold mb-0">{{ total_students }}</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">Department Faculty</small>
+            <h3 class="fw-bold mb-0">{{ total_faculty }}</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">Low Attendance Defaulters (&lt;75%)</small>
+            <h3 class="fw-bold text-danger mb-0">{{ defaulters|length }}</h3>
+        </div>
+    </div>
+
+    <!-- Attendance Distribution Chart -->
+    <div class="col-lg-5">
+        <div class="card p-4 bg-white h-100">
+            <h5 class="fw-bold mb-3">Department Attendance Health</h5>
+            <canvas id="hodPieChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Defaulter List with 1-Click Parent & Student WhatsApp Alert -->
+    <div class="col-lg-7">
+        <div class="card p-4 bg-white h-100">
+            <h5 class="fw-bold mb-3">Low Attendance Defaulters (&lt;75% BTER Policy)</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Enrollment ID</th>
+                            <th>Name</th>
+                            <th>Attendance</th>
+                            <th>WhatsApp Alerts (Parent &amp; Student)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in defaulters %}
+                        <tr>
+                            <td class="fw-bold">{{ d.student.enrollment_id }}</td>
+                            <td>{{ d.student.user.get_full_name }}</td>
+                            <td><span class="badge badge-soft-danger">{{ d.pct }}%</span></td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <a href="{{ d.parent_whatsapp_url }}" target="_blank" class="btn btn-success btn-sm">Alert Parent</a>
+                                    {% if d.student_whatsapp_url %}
+                                        <a href="{{ d.student_whatsapp_url }}" target="_blank" class="btn btn-outline-success btn-sm">Alert Student</a>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border align-self-center">No Student Mobile</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted">All students are in Safe Zone (≥75%).</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- HOD Official Notice Publisher -->
+    <div class="col-12">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">Publish Official HOD / BTER Notice</h5>
+            <form method="POST" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="hod_notice">
+                <div class="col-md-6"><input type="text" name="title" class="form-control" placeholder="Official Notice Title" required></div>
+                <div class="col-md-3">
+                    <select name="category" class="form-select">
+                        <option value="BTER">BTER Jodhpur Exam/Policy</option>
+                        <option value="COLLEGE">GPC Bundi General Notice</option>
+                        <option value="ALERT">Urgent / Attendance Alert</option>
+                    </select>
+                </div>
+                <div class="col-md-3"><button class="btn btn-dark w-100">Publish Notice</button></div>
+                <div class="col-12"><textarea name="content" rows="2" class="form-control" placeholder="Notice content..." required></textarea></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- HOD Mid-Term 1 & 2 Marks Audit & Edit Override -->
+    <div class="col-12">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">HOD Marks Control: View, Edit &amp; Lock Mid-Term 1 &amp; 2</h5>
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle">
+                    <thead class="table-light">
+                        <tr><th>Enrollment</th><th>Student Name</th><th>Subject</th><th>Mid-Term 1</th><th>Mid-Term 2</th><th>Average</th><th>HOD Remarks</th><th>Lock</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for m in all_marks %}
+                        <tr>
+                            <form method="POST">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="hod_edit_marks">
+                                <input type="hidden" name="mark_id" value="{{ m.id }}">
+                                <td class="fw-bold">{{ m.student.enrollment_id }}</td>
+                                <td>{{ m.student.user.get_full_name }}</td>
+                                <td>{{ m.subject.code }}</td>
+                                <td><input type="number" step="0.5" min="0" max="20" name="mid_term_1" value="{{ m.mid_term_1|default_if_none:'' }}" class="form-control form-control-sm" style="width:80px"></td>
+                                <td><input type="number" step="0.5" min="0" max="20" name="mid_term_2" value="{{ m.mid_term_2|default_if_none:'' }}" class="form-control form-control-sm" style="width:80px"></td>
+                                <td class="fw-bold">{{ m.average_marks }}</td>
+                                <td><input type="text" name="hod_remarks" value="{{ m.hod_remarks|default:'' }}" class="form-control form-control-sm" placeholder="Audit remark"></td>
+                                <td class="text-center"><input type="checkbox" name="is_locked" {% if m.is_locked %}checked{% endif %}></td>
+                                <td><button class="btn btn-primary btn-sm">Update</button></td>
+                            </form>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="9" class="text-center text-muted">No mid-term marks entered yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Safe Data Bridge for JavaScript -->
+<div id="hodChartBridge" data-dist='{{ chart_distribution_json|safe }}'></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const distData = JSON.parse(document.getElementById('hodChartBridge').dataset.dist || '[0,0,0]');
+new Chart(document.getElementById('hodPieChart'), {
+    type: 'pie',
+    data: {
+        labels: ['Safe (≥75%)', 'Warning (65-74%)', 'Critical (<65%)'],
+        datasets: [{
+            data: distData,
+            backgroundColor: ['#22c55e', '#facc15', '#ef4444']
+        }]
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,270 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row g-4">
+    <!-- Live Attendance Register & Discipline Override (Full Width Top Card) -->
+    <div class="col-12">
+        <div class="card p-4 bg-white">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="fw-bold mb-0">Live Attendance Register & Discipline Control</h5>
+                    <small class="text-muted">View students who marked Face + GPS attendance and revoke Present to Absent anytime for class indiscipline.</small>
+                </div>
+                <span class="badge bg-primary">Total Records: {{ attendance_logs|length }}</span>
+            </div>
+            <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Date</th>
+                            <th>Subject</th>
+                            <th>Lecture Time</th>
+                            <th>Enrollment ID</th>
+                            <th>Student Name</th>
+                            <th>Marked At</th>
+                            <th>Status</th>
+                            <th>Discipline Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for att in attendance_logs %}
+                        <tr class="{% if not att.is_present %}table-danger{% endif %}">
+                            <td>{{ att.date|date:"d M Y" }}</td>
+                            <td class="fw-semibold">{{ att.subject.code }}</td>
+                            <td>
+                                {% if att.timetable_slot %}
+                                    {{ att.timetable_slot.start_time|time:"h:i A" }} - {{ att.timetable_slot.end_time|time:"h:i A" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">{{ att.student.enrollment_id }}</td>
+                            <td>{{ att.student.user.get_full_name }}</td>
+                            <td>{{ att.timestamp|time:"h:i A" }}</td>
+                            <td>
+                                {% if att.is_present %}
+                                    <span class="badge bg-success">Present</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Absent (Revoked)</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="POST" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="toggle_attendance">
+                                    <input type="hidden" name="attendance_id" value="{{ att.id }}">
+                                    {% if att.is_present %}
+                                        <button type="submit" class="btn btn-danger btn-sm py-0 px-2">Mark Absent (Indiscipline)</button>
+                                    {% else %}
+                                        <button type="submit" class="btn btn-outline-success btn-sm py-0 px-2">Restore Present</button>
+                                    {% endif %}
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted small py-3">No body have mark the present</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Subject & Weekly Timetable -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white mb-4">
+            <h5 class="fw-bold mb-3">1. Add Subject</h5>
+            <form method="POST" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_subject">
+                <div class="col-md-4"><input type="text" name="code" class="form-control" placeholder="Code (CS-501)" required></div>
+                <div class="col-md-5"><input type="text" name="name" class="form-control" placeholder="Subject Name" required></div>
+                <div class="col-md-3">
+                    <select name="semester" class="form-select">
+                        <option value="1">Sem 1</option><option value="2">Sem 2</option>
+                        <option value="3">Sem 3</option><option value="4">Sem 4</option>
+                        <option value="5" selected>Sem 5</option><option value="6">Sem 6</option>
+                    </select>
+                </div>
+                <div class="col-12"><button class="btn btn-primary btn-sm">Add Subject</button></div>
+            </form>
+        </div>
+
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">2. Set Master Weekly Timetable (Auto-Repeats Weekly)</h5>
+            <form method="POST" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_timetable">
+                <div class="col-md-6">
+                    <select name="subject_id" class="form-select" required>
+                        {% for s in subjects %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <select name="day_of_week" class="form-select">
+                        <option value="0">Monday</option><option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option><option value="3">Thursday</option>
+                        <option value="4">Friday</option><option value="5">Saturday</option>
+                    </select>
+                </div>
+                <div class="col-md-4"><input type="time" name="start_time" class="form-control" required></div>
+                <div class="col-md-4"><input type="time" name="end_time" class="form-control" required></div>
+                <div class="col-md-4"><input type="text" name="room_no" class="form-control" placeholder="Room/Lab"></div>
+                <div class="col-12"><button class="btn btn-success btn-sm">Save Weekly Slot</button></div>
+            </form>
+
+            <hr class="my-3">
+            <h6 class="fw-bold text-muted mb-2">Saved Weekly Lectures (Monday – Saturday)</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Day</th>
+                            <th>Subject</th>
+                            <th>Timing</th>
+                            <th>Room</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in timetable %}
+                        <tr>
+                            <td class="fw-semibold">{{ slot.get_day_of_week_display }}</td>
+                            <td>{{ slot.subject.code }} (Sem {{ slot.subject.semester }})</td>
+                            <td>{{ slot.start_time|time:"h:i A" }} - {{ slot.end_time|time:"h:i A" }}</td>
+                            <td>{{ slot.room_no|default:"-" }}</td>
+                            <td>
+                                <form method="POST" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete_timetable">
+                                    <input type="hidden" name="slot_id" value="{{ slot.id }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted small">Abhi tak koi weekly lecture save nahi kiya gaya hai.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mid-Term 1 & 2 Marks Entry + Saved Marks View -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white h-100">
+            <h5 class="fw-bold mb-3">3. Feed BTER Mid-Term 1 & 2 Marks</h5>
+            <form method="POST" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_marks">
+                <div class="col-md-6">
+                    <label class="small">Subject</label>
+                    <select name="subject_id" class="form-select" required>
+                        {% for s in subjects %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="small">Student (Enrollment ID)</label>
+                    <select name="student_id" class="form-select" required>
+                        {% for st in students %}<option value="{{ st.id }}">{{ st.enrollment_id }} - {{ st.user.get_full_name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="small">Mid-Term 1 (Max 20)</label>
+                    <input type="number" step="0.5" min="0" max="20" name="mid_term_1" class="form-control" placeholder="e.g. 16">
+                </div>
+                <div class="col-md-6">
+                    <label class="small">Mid-Term 2 (Optional if pending)</label>
+                    <input type="number" step="0.5" min="0" max="20" name="mid_term_2" class="form-control" placeholder="Leave blank if pending">
+                </div>
+                <div class="col-12"><button class="btn btn-dark btn-sm mt-2">Save / Update Marks</button></div>
+            </form>
+
+            <hr class="my-3">
+            <h6 class="fw-bold text-muted mb-2">Saved Mid-Term Marks</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Enrollment ID</th>
+                            <th>Student Name</th>
+                            <th>Subject</th>
+                            <th>MT-1</th>
+                            <th>MT-2</th>
+                            <th>Avg</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in saved_marks %}
+                        <tr>
+                            <td class="fw-semibold">{{ m.student.enrollment_id }}</td>
+                            <td>{{ m.student.user.get_full_name }}</td>
+                            <td>{{ m.subject.code }}</td>
+                            <td>{{ m.mid_term_1|default_if_none:"Pending" }}</td>
+                            <td>{{ m.mid_term_2|default_if_none:"Pending" }}</td>
+                            <td class="fw-bold">{{ m.average_marks }}</td>
+                            <td>
+                                {% if m.is_locked %}
+                                    <span class="badge bg-danger">Locked by HOD</span>
+                                {% else %}
+                                    <span class="badge bg-success">Editable</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted small">Abhi tak koi marks save nahi kiye gaye hain.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Study Notes -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">4. Upload Study Notes</h5>
+            <form method="POST" enctype="multipart/form-data" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="upload_note">
+                <div class="col-md-6">
+                    <select name="subject_id" class="form-select" required>
+                        {% for s in subjects %}<option value="{{ s.id }}">{{ s.code }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6"><input type="text" name="title" class="form-control" placeholder="Unit / Topic Title" required></div>
+                <div class="col-12"><input type="file" name="note_file" class="form-control" required></div>
+                <div class="col-12"><button class="btn btn-primary btn-sm">Upload Note</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Post Notices -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">5. Publish College / Class Notice</h5>
+            <form method="POST" class="row g-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="post_notice">
+                <div class="col-md-8"><input type="text" name="title" class="form-control" placeholder="Notice Heading" required></div>
+                <div class="col-md-4">
+                    <select name="category" class="form-select">
+                        <option value="COLLEGE">GPC Notice</option>
+                        <option value="TIMETABLE">Time Table</option>
+                        <option value="BTER">BTER Update</option>
+                    </select>
+                </div>
+                <div class="col-12"><textarea name="content" rows="2" class="form-control" placeholder="Notice details..." required></textarea></div>
+                <div class="col-12"><button class="btn btn-outline-dark btn-sm">Publish Notice</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

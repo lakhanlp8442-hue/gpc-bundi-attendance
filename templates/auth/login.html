@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-md-5 col-lg-4">
+        <div class="card p-4 bg-white">
+            <h4 class="fw-bold text-center mb-1">Portal Login</h4>
+            <p class="text-muted text-center small mb-4">Student (BTER Enrollment ID) / Faculty / HOD</p>
+
+            <form method="POST">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Enrollment ID / Employee ID / Username</label>
+                    <input type="text" name="username" class="form-control" placeholder="e.g. 2401201001" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Password</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 fw-semibold">Sign In</button>
+            </form>
+
+            <hr class="my-4">
+            <div class="d-grid gap-2">
+                <a href="{% url 'student_register' %}" class="btn btn-outline-secondary btn-sm">New Student Registration (Face ID)</a>
+                <a href="{% url 'faculty_register' %}" class="btn btn-outline-secondary btn-sm">New Faculty Registration</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card p-4 bg-white">
+            <h4 class="fw-bold mb-1">Student Registration (BTER Enrollment + Face ID)</h4>
+            <p class="text-muted small mb-4">One-time registration using unique BTER Enrollment ID. Double registration is restricted.</p>
+
+            <form method="POST" id="regForm">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Full Name</label>
+                        <input type="text" name="full_name" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">BTER Enrollment ID (Unique)</label>
+                        <input type="text" name="enrollment_id" class="form-control text-uppercase" placeholder="e.g. 2401201001" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Student Mobile Number</label>
+                        <input type="tel" name="mobile" pattern="[6-9][0-9]{9}" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Parent/Guardian Mobile (For Alerts)</label>
+                        <input type="tel" name="parent_mobile" pattern="[6-9][0-9]{9}" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Branch</label>
+                        <select name="branch" class="form-select">
+                            <option value="CSE">Computer Science (CSE)</option>
+                            <option value="ME">Mechanical (ME)</option>
+                            <option value="EE">Electrical (EE)</option>
+                            <option value="CE">Civil (CE)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Semester</label>
+                        <select name="semester" class="form-select">
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                            <option value="3">3rd Semester</option>
+                            <option value="4">4th Semester</option>
+                            <option value="5" selected>5th Semester</option>
+                            <option value="6">6th Semester</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Create Password</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="mt-4 p-3 border rounded bg-light text-center">
+                    <h6 class="fw-bold">Live Face ID Enrollment</h6>
+                    <p class="small text-muted">Look straight into the camera and click "Capture Face" before submitting.</p>
+                    <video id="video" width="320" height="240" autoplay class="rounded border bg-dark"></video>
+                    <canvas id="canvas" width="320" height="240" class="d-none"></canvas>
+                    <input type="hidden" name="face_image" id="face_image" required>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-dark btn-sm" onclick="captureFace()">Capture Face</button>
+                        <span id="captureStatus" class="ms-2 small fw-semibold text-danger">Not Captured</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 mt-4 fw-semibold">Complete Registration</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const video = document.getElementById('video');
+navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => { video.srcObject = stream; })
+    .catch(err => alert("Camera access denied! Please allow webcam permission."));
+
+function captureFace() {
+    const canvas = document.getElementById('canvas');
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    document.getElementById('face_image').value = canvas.toDataURL('image/jpeg');
+    const status = document.getElementById('captureStatus');
+    status.textContent = "Face Captured Successfully ✓";
+    status.className = "ms-2 small fw-semibold text-success";
+}
+</script>
+{% endblock %}

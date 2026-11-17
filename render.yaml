@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gpc-bundi-attendance
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn gpc_bundi_portal.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"

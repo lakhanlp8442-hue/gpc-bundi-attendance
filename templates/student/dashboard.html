@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row g-4">
+    <!-- Top Stats -->
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">BTER Enrollment ID</small>
+            <h4 class="fw-bold mb-0">{{ student.enrollment_id }}</h4>
+            <span class="text-muted small">{{ user.branch }} | Semester {{ student.semester }}</span>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">Overall Attendance (BTER Min: 75%)</small>
+            <h4 class="fw-bold mb-0 {% if overall_pct >= 75 %}text-success{% else %}text-danger{% endif %}">{{ overall_pct }}%</h4>
+            <span class="text-muted small">Present: {{ total_present }} | Absent: {{ total_absent }}</span>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3 bg-white">
+            <small class="text-muted">Parent Alert Number</small>
+            <h5 class="fw-bold mb-0">+91 {{ student.parent_mobile }}</h5>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+                <span class="badge {% if overall_pct >= 75 %}badge-soft-success{% else %}badge-soft-danger{% endif %}">
+                    {% if overall_pct >= 75 %}Safe Zone (≥75%){% else %}Low Attendance Alert{% endif %}
+                </span>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-bs-toggle="modal" data-bs-target="#reRegisterFaceModal" onclick="startReRegCamera()">
+                    Re-Register Face
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Face + GPS Lecture Attendance -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white h-100">
+            <h5 class="fw-bold mb-2">Mark Lecture Attendance (Face ID + Campus GPS)</h5>
+            {% if active_slots %}
+                <p class="small text-muted">Active lecture detected right now. Verify face inside GPC Bundi campus:</p>
+                <select id="slotSelect" class="form-select mb-3">
+                    {% for slot in active_slots %}
+                        <option value="{{ slot.id }}">{{ slot.subject.code }} - {{ slot.subject.name }} ({{ slot.start_time|time:"h:i A" }} - {{ slot.end_time|time:"h:i A" }})</option>
+                    {% endfor %}
+                </select>
+                <div class="text-center">
+                    <video id="attVideo" width="320" height="220" autoplay class="rounded border bg-dark"></video>
+                    <canvas id="attCanvas" width="320" height="220" class="d-none"></canvas>
+                </div>
+                <button type="button" class="btn btn-success w-100 mt-3 fw-semibold" onclick="markAttendance()">Scan Face & Mark Present</button>
+                <div id="attResult" class="mt-2 small fw-bold text-center"></div>
+            {% else %}
+                <div class="alert alert-light border text-center my-auto">
+                    No active lecture scheduled at this exact time. Check your Weekly Timetable below.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Attendance Charts -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white h-100">
+            <h5 class="fw-bold mb-3">Attendance Analytics</h5>
+            <div class="row align-items-center">
+                <div class="col-md-5">
+                    <canvas id="overallDoughnut"></canvas>
+                </div>
+                <div class="col-md-7">
+                    <canvas id="subjectBarChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BTER Mid-Term 1 & 2 Marks -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">BTER Mid-Term 1 & 2 Marks</h5>
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr><th>Subject</th><th>Mid-Term 1</th><th>Mid-Term 2</th><th>Average</th></tr>
+                </thead>
+                <tbody>
+                    {% for m in marks %}
+                    <tr>
+                        <td>{{ m.subject.code }} - {{ m.subject.name }}</td>
+                        <td>{{ m.mid_term_1|default_if_none:"Pending" }}</td>
+                        <td>{{ m.mid_term_2|default_if_none:"Pending" }}</td>
+                        <td class="fw-bold">{{ m.average_marks }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No marks uploaded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Weekly Timetable -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">Weekly Lecture Timetable</h5>
+            <table class="table table-sm table-striped">
+                <thead><tr><th>Day</th><th>Subject</th><th>Time</th><th>Room</th></tr></thead>
+                <tbody>
+                    {% for t in timetable %}
+                    <tr>
+                        <td>{{ t.get_day_of_week_display }}</td>
+                        <td>{{ t.subject.code }}</td>
+                        <td>{{ t.start_time|time:"h:i A" }} - {{ t.end_time|time:"h:i A" }}</td>
+                        <td>{{ t.room_no|default:"-" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted">No lectures scheduled yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Study Notes & Notices -->
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">Faculty Study Notes</h5>
+            <ul class="list-group list-group-flush">
+                {% for n in notes %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ n.title }}</strong> <span class="badge bg-secondary">{{ n.subject.code }}</span>
+                        <div class="small text-muted">{{ n.description }}</div>
+                    </div>
+                    <a href="{{ n.file.url }}" class="btn btn-sm btn-outline-primary" download>Download</a>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted">No notes uploaded yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card p-4 bg-white">
+            <h5 class="fw-bold mb-3">GPC Bundi & BTER Notices</h5>
+            {% for notice in notices %}
+            <div class="border-bottom pb-2 mb-2">
+                <span class="badge badge-soft-primary">{{ notice.get_category_display }}</span>
+                <strong class="ms-1">{{ notice.title }}</strong>
+                <p class="small text-muted mb-0">{{ notice.content }}</p>
+            </div>
+            {% empty %}
+            <p class="text-muted">No notices available.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Re-Register Face ID -->
+<div class="modal fade" id="reRegisterFaceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Update / Re-Register Face ID</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="stopReRegCamera()"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p class="small text-muted mb-2">Look directly at the camera in good lighting and enter your account password to update your Face ID.</p>
+                <video id="reRegVideo" width="300" height="220" autoplay playsinline class="rounded border bg-dark mb-2"></video>
+                <canvas id="reRegCanvas" width="300" height="220" class="d-none"></canvas>
+                <input type="password" id="reRegPassword" class="form-control form-control-sm mt-2" placeholder="Enter your login password to verify">
+                <div id="reRegResult" class="mt-2 small fw-bold"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" onclick="stopReRegCamera()">Cancel</button>
+                <button type="button" id="reRegSubmitBtn" class="btn btn-primary btn-sm" onclick="submitReRegisterFace()">Capture & Update Face</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Safe Data Bridge for JavaScript -->
+<div id="chartDataBridge"
+     data-present="{{ total_present }}"
+     data-absent="{{ total_absent }}"
+     data-labels='{{ subject_labels_json|safe }}'
+     data-pcts='{{ subject_pct_json|safe }}'
+     data-api-url="{% url 'mark_face_attendance_api' %}"
+     data-rereg-url="{% url 're_register_face_api' %}"
+     data-csrf="{{ csrf_token }}">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const bridge = document.getElementById('chartDataBridge').dataset;
+const presentCount = Number(bridge.present);
+const absentCount = Number(bridge.absent);
+const subjectLabels = JSON.parse(bridge.labels || '[]');
+const subjectPcts = JSON.parse(bridge.pcts || '[]');
+
+new Chart(document.getElementById('overallDoughnut'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Present', 'Absent'],
+        datasets: [{ data: [presentCount, absentCount], backgroundColor: ['#22c55e', '#e2e8f0'] }]
+    }
+});
+
+new Chart(document.getElementById('subjectBarChart'), {
+    type: 'bar',
+    data: {
+        labels: subjectLabels,
+        datasets: [{
+            label: 'Attendance %',
+            data: subjectPcts,
+            backgroundColor: '#38bdf8'
+        }]
+    },
+    options: { scales: { y: { beginAtZero: true, max: 100 } } }
+});
+
+const attVideo = document.getElementById('attVideo');
+if (attVideo) {
+    navigator.mediaDevices.getUserMedia({ video: true }).then(s => attVideo.srcObject = s);
+}
+
+function markAttendance() {
+    const resBox = document.getElementById('attResult');
+    resBox.textContent = "Verifying GPC Bundi GPS & Face ID...";
+    navigator.geolocation.getCurrentPosition(pos => {
+        const canvas = document.getElementById('attCanvas');
+        canvas.getContext('2d').drawImage(attVideo, 0, 0, canvas.width, canvas.height);
+        fetch(bridge.apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": bridge.csrf },
+            body: JSON.stringify({
+                slot_id: document.getElementById('slotSelect').value,
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                face_image: canvas.toDataURL('image/jpeg', 0.7)
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            resBox.textContent = data.message;
+            resBox.className = data.status === 'success' ? "mt-2 small fw-bold text-success" : "mt-2 small fw-bold text-danger";
+        })
+        .catch(err => {
+            resBox.textContent = "Server error: " + err.message;
+            resBox.className = "mt-2 small fw-bold text-danger";
+        });
+    }, () => { resBox.textContent = "Location permission is mandatory!"; });
+}
+
+let reRegStream = null;
+function startReRegCamera() {
+    const vid = document.getElementById('reRegVideo');
+    const resBox = document.getElementById('reRegResult');
+    resBox.textContent = "Starting camera...";
+    resBox.className = "mt-2 small text-muted";
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            reRegStream = stream;
+            vid.srcObject = stream;
+            resBox.textContent = "";
+        })
+        .catch(err => {
+            resBox.textContent = "Camera error: " + err.message;
+            resBox.className = "mt-2 small fw-bold text-danger";
+        });
+}
+
+function stopReRegCamera() {
+    if (reRegStream) {
+        reRegStream.getTracks().forEach(track => track.stop());
+        reRegStream = null;
+    }
+}
+
+async function submitReRegisterFace() {
+    const resBox = document.getElementById('reRegResult');
+    const btn = document.getElementById('reRegSubmitBtn');
+    const pwd = document.getElementById('reRegPassword').value;
+    const vid = document.getElementById('reRegVideo');
+    const canvas = document.getElementById('reRegCanvas');
+
+    if (!pwd) {
+        resBox.textContent = "Please enter your password first.";
+        resBox.className = "mt-2 small fw-bold text-danger";
+        return;
+    }
+
+    if (!vid.srcObject || vid.videoWidth === 0) {
+        resBox.textContent = "Camera not ready yet. Please allow camera access and wait 1 second.";
+        resBox.className = "mt-2 small fw-bold text-danger";
+        return;
+    }
+
+    btn.disabled = true;
+    resBox.textContent = "Capturing & saving Face ID...";
+    resBox.className = "mt-2 small fw-bold text-primary";
+
+    try {
+        canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height);
+        const imgData = canvas.toDataURL('image/jpeg', 0.7);
+
+        const response = await fetch(bridge.reregUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": bridge.csrf },
+            body: JSON.stringify({
+                password: pwd,
+                face_image: imgData
+            })
+        });
+
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error("Server returned invalid response (Status " + response.status + "). Please refresh page.");
+        }
+
+        resBox.textContent = data.message;
+        resBox.className = data.status === 'success' ? "mt-2 small fw-bold text-success" : "mt-2 small fw-bold text-danger";
+
+        if (data.status === 'success') {
+            document.getElementById('reRegPassword').value = "";
+            setTimeout(() => {
+                stopReRegCamera();
+                location.reload();
+            }, 1200);
+        } else {
+            btn.disabled = false;
+        }
+    } catch (err) {
+        resBox.textContent = "Error: " + err.message;
+        resBox.className = "mt-2 small fw-bold text-danger";
+        btn.disabled = false;
+    }
+}
+</script>
+{% endblock %}
