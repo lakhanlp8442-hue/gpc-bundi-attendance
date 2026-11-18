@@ -62,9 +62,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'gpc_bundi_portal.wsgi.application'
 
-# Database: Cloud PostgreSQL if DATABASE_URL exists, otherwise local SQLite
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
+# Database: Cloud PostgreSQL if valid DATABASE_URL is set, otherwise local SQLite
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if DATABASE_URL.startswith(('postgres://', 'postgresql://')):
     DATABASES = {
         'default': dj_database_url.parse(
             DATABASE_URL,
