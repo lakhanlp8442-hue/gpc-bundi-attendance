@@ -18,25 +18,31 @@
     </div>
     <div class="col-md-4">
         <div class="card p-3 bg-white">
-            <small class="text-muted">Parent Alert Number</small>
+            <small class="text-muted">Parent Alert Number & Biometrics</small>
             <h5 class="fw-bold mb-0">+91 {{ student.parent_mobile }}</h5>
-            <div class="d-flex justify-content-between align-items-center mt-1">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-1 mt-1">
                 <span class="badge {% if overall_pct >= 75 %}badge-soft-success{% else %}badge-soft-danger{% endif %}">
                     {% if overall_pct >= 75 %}Safe Zone (≥75%){% else %}Low Attendance Alert{% endif %}
                 </span>
-                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-bs-toggle="modal" data-bs-target="#reRegisterFaceModal" onclick="startReRegCamera()">
-                    Re-Register Face
-                </button>
+                <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" data-bs-toggle="modal" data-bs-target="#reRegisterFaceModal" onclick="startReRegCamera()">
+                        Re-Register Face
+                    </button>
+                    <button type="button" id="regFingerBtn" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="registerFingerprint()">
+                        {% if student.fingerprint_template %}Update Finger{% else %}Register Finger{% endif %}
+                    </button>
+                </div>
             </div>
+            <div id="fingerRegStatus" class="small fw-semibold mt-1"></div>
         </div>
     </div>
 
-    <!-- Live Face + GPS Lecture Attendance -->
+    <!-- Live Face + Biometric + GPS Lecture Attendance -->
     <div class="col-lg-6">
         <div class="card p-4 bg-white h-100">
-            <h5 class="fw-bold mb-2">Mark Lecture Attendance (Face ID + Campus GPS)</h5>
+            <h5 class="fw-bold mb-2">Mark Lecture Attendance (Face ID / Mantra MFS100 + GPS)</h5>
             {% if active_slots %}
-                <p class="small text-muted">Active lecture detected right now. Verify face inside GPC Bundi campus:</p>
+                <p class="small text-muted">Active lecture detected right now. Verify Face or Mantra MFS100 inside GPC Bundi campus:</p>
                 <select id="slotSelect" class="form-select mb-3">
                     {% for slot in active_slots %}
                         <option value="{{ slot.id }}">{{ slot.subject.code }} - {{ slot.subject.name }} ({{ slot.start_time|time:"h:i A" }} - {{ slot.end_time|time:"h:i A" }})</option>
@@ -46,7 +52,18 @@
                     <video id="attVideo" width="320" height="220" autoplay class="rounded border bg-dark"></video>
                     <canvas id="attCanvas" width="320" height="220" class="d-none"></canvas>
                 </div>
-                <button type="button" class="btn btn-success w-100 mt-3 fw-semibold" onclick="markAttendance()">Scan Face & Mark Present</button>
+                <div class="row g-2 mt-2">
+                    <div class="col-sm-6">
+                        <button type="button" class="btn btn-success w-100 fw-semibold" onclick="markAttendance()">
+                            Scan Face & Mark Present
+                        </button>
+                    </div>
+                    <div class="col-sm-6">
+                        <button type="button" id="fingerMarkBtn" class="btn btn-primary w-100 fw-semibold" onclick="markFingerprintAttendance()">
+                            Scan Finger (MFS100)
+                        </button>
+                    </div>
+                </div>
                 <div id="attResult" class="mt-2 small fw-bold text-center"></div>
             {% else %}
                 <div class="alert alert-light border text-center my-auto">
@@ -184,6 +201,8 @@
      data-pcts='{{ subject_pct_json|safe }}'
      data-api-url="{% url 'mark_face_attendance_api' %}"
      data-rereg-url="{% url 're_register_face_api' %}"
+     data-finger-reg-url="{% url 'register_fingerprint_api' %}"
+     data-finger-mark-url="{% url 'mark_fingerprint_attendance_api' %}"
      data-csrf="{{ csrf_token }}">
 </div>
 {% endblock %}
@@ -219,12 +238,15 @@ new Chart(document.getElementById('subjectBarChart'), {
 
 const attVideo = document.getElementById('attVideo');
 if (attVideo) {
-    navigator.mediaDevices.getUserMedia({ video: true }).then(s => attVideo.srcObject = s);
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(s => attVideo.srcObject = s)
+        .catch(() => { /* Camera optional if student uses Mantra MFS100 */ });
 }
 
 function markAttendance() {
     const resBox = document.getElementById('attResult');
     resBox.textContent = "Verifying GPC Bundi GPS & Face ID...";
+    resBox.className = "mt-2 small fw-bold text-primary text-center";
     navigator.geolocation.getCurrentPosition(pos => {
         const canvas = document.getElementById('attCanvas');
         canvas.getContext('2d').drawImage(attVideo, 0, 0, canvas.width, canvas.height);
@@ -241,13 +263,81 @@ function markAttendance() {
         .then(r => r.json())
         .then(data => {
             resBox.textContent = data.message;
-            resBox.className = data.status === 'success' ? "mt-2 small fw-bold text-success" : "mt-2 small fw-bold text-danger";
+            resBox.className = data.status === 'success' ? "mt-2 small fw-bold text-success text-center" : "mt-2 small fw-bold text-danger text-center";
         })
         .catch(err => {
             resBox.textContent = "Server error: " + err.message;
-            resBox.className = "mt-2 small fw-bold text-danger";
+            resBox.className = "mt-2 small fw-bold text-danger text-center";
         });
-    }, () => { resBox.textContent = "Location permission is mandatory!"; });
+    }, () => {
+        resBox.textContent = "Location permission is mandatory!";
+        resBox.className = "mt-2 small fw-bold text-danger text-center";
+    });
+}
+
+async function registerFingerprint() {
+    const btn = document.getElementById('regFingerBtn');
+    const statusBox = document.getElementById('fingerRegStatus');
+    btn.disabled = true;
+    statusBox.textContent = "Place finger on Mantra MFS100 scanner...";
+    statusBox.className = "small fw-semibold mt-1 text-primary";
+
+    try {
+        const response = await fetch(bridge.fingerRegUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": bridge.csrf },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        statusBox.textContent = data.message;
+        statusBox.className = data.status === 'success'
+            ? "small fw-semibold mt-1 text-success"
+            : "small fw-semibold mt-1 text-danger";
+        if (data.status === 'success') {
+            btn.textContent = "Update Finger";
+        }
+    } catch (err) {
+        statusBox.textContent = "Scanner Error: " + err.message;
+        statusBox.className = "small fw-semibold mt-1 text-danger";
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function markFingerprintAttendance() {
+    const resBox = document.getElementById('attResult');
+    const btn = document.getElementById('fingerMarkBtn');
+    btn.disabled = true;
+    resBox.textContent = "Checking GPS & waiting for Mantra MFS100 finger scan...";
+    resBox.className = "mt-2 small fw-bold text-primary text-center";
+
+    navigator.geolocation.getCurrentPosition(async pos => {
+        try {
+            const response = await fetch(bridge.fingerMarkUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": bridge.csrf },
+                body: JSON.stringify({
+                    slot_id: document.getElementById('slotSelect').value,
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude
+                })
+            });
+            const data = await response.json();
+            resBox.textContent = data.message;
+            resBox.className = data.status === 'success'
+                ? "mt-2 small fw-bold text-success text-center"
+                : "mt-2 small fw-bold text-danger text-center";
+        } catch (err) {
+            resBox.textContent = "Biometric Error: " + err.message;
+            resBox.className = "mt-2 small fw-bold text-danger text-center";
+        } finally {
+            btn.disabled = false;
+        }
+    }, () => {
+        resBox.textContent = "Location permission is mandatory!";
+        resBox.className = "mt-2 small fw-bold text-danger text-center";
+        btn.disabled = false;
+    });
 }
 
 let reRegStream = null;

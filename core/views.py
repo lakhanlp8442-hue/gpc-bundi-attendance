@@ -9,6 +9,10 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from .mantra_scanner import (
+    capture_mfs100_fingerprint,
+    verify_mfs100_fingerprint,
+)
 from .models import (
     Attendance, FacultyProfile, MidTermMarks, Notice,
     StudentProfile, StudyNote, Subject, User, WeeklyTimetable
@@ -311,6 +315,82 @@ def re_register_face_api(request):
         student.save()
 
         return JsonResponse({'status': 'success', 'message': 'New Face ID updated successfully! You can now mark attendance with your updated face.'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Server Error: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def register_fingerprint_api(request):
+    """Student ke profile mein Mantra MFS100 se ISO fingerprint template save karta hai."""
+    if request.user.role != 'STUDENT' or not hasattr(request.user, 'student_profile'):
+        return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=403)
+
+    iso_b64, quality, err = capture_mfs100_fingerprint()
+    if err:
+        return JsonResponse({'status': 'error', 'message': err}, status=400)
+
+    student = request.user.student_profile
+    student.set_fingerprint(iso_b64)
+    student.save()
+    return JsonResponse({
+        'status': 'success',
+        'message': f'Mantra MFS100 Fingerprint registered! (Quality: {quality}%)'
+    })
+
+
+@login_required
+@require_POST
+def mark_fingerprint_attendance_api(request):
+    """Mantra MFS100 fingerprint + Campus Geofence se attendance mark karta hai."""
+    try:
+        if request.user.role != 'STUDENT' or not hasattr(request.user, 'student_profile'):
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=403)
+
+        data = json.loads(request.body)
+        slot_id = data.get('slot_id')
+        lat = data.get('latitude')
+        lon = data.get('longitude')
+
+        if not all([slot_id, lat, lon]):
+            return JsonResponse({'status': 'error', 'message': 'Lecture slot aur GPS location zaroori hai.'}, status=400)
+
+        slot = get_object_or_404(WeeklyTimetable, id=slot_id)
+        now = datetime.datetime.now()
+        if slot.day_of_week != now.weekday() or not is_slot_open_for_attendance(slot, now):
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Attendance window closed! Sirf lecture start ke {ATTENDANCE_WINDOW_MINUTES} min ke andar mark kar sakte hain.'
+            }, status=400)
+
+        is_inside, distance = verify_campus_geofence(lat, lon)
+        if not is_inside:
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Outside GPC Bundi Campus! Distance: {distance}m'
+            }, status=400)
+
+        student = request.user.student_profile
+        is_match, score, err = verify_mfs100_fingerprint(student.get_fingerprint())
+        if not is_match:
+            return JsonResponse({'status': 'error', 'message': err}, status=400)
+
+        today = datetime.date.today()
+        if Attendance.objects.filter(student=student, timetable_slot=slot, date=today).exists():
+            return JsonResponse({'status': 'error', 'message': 'Is lecture ki attendance pehle hi lag chuki hai.'}, status=400)
+
+        Attendance.objects.create(
+            student=student,
+            subject=slot.subject,
+            timetable_slot=slot,
+            latitude=lat,
+            longitude=lon,
+            face_match_confidence=round(min(score / 2000.0, 1.0), 3),
+        )
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Biometric Attendance Marked for {slot.subject.name}! (MFS100 Score: {score})'
+        })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': f'Server Error: {str(e)}'}, status=500)
 
