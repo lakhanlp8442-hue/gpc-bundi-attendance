@@ -15,7 +15,8 @@ if not User.objects.filter(username='hod_cse').exists():
         first_name='HOD',
         last_name='CSE',
         role='HOD',
-        branch='CSE'
+        branch='CSE',
+        mobile='9999999999'
     )
     print('Superuser & HOD account created!')
 "
